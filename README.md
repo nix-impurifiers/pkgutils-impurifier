@@ -57,3 +57,20 @@ installs and removals, dependency rejection, offline recovery, native config
 policy, service/account lifecycle/admin intent, drivers, foreign-root safety
 and rooted GC. The outer OS/init is NixOS with preinstalled Nix; a CRUX boot and
 Nix installer are separate work.
+
+## Native payloads and bundled clients
+
+`makeNativePackage { name; version; payload; release?; dependencies?; }` emits
+a native archive from a producer-prepared filesystem tree, without engine
+requirements metadata, activation or a Nix dependency. Native pkgutils can own
+this archive directly; dependency expressions remain port/frontend policy.
+The producer prepares a runnable target layout; no relocation is performed.
+The native VM installs and executes a static payload in a root without `/nix`,
+then upgrades and removes it through native pkgutils.
+
+`makeRuntimePackage` optionally accepts `bundledNixStore` and
+`bundledNixNotices`. A static client omits the default native Nix requirement;
+Python remains required. Compatible external clients take precedence. Explicit
+`IMPURIFIER_NIX_STORE` prevents fallback, and mutations are never retried with
+another client. A separate bundled-client VM repeats the existing lifecycle
+suite with an incompatible external candidate. Nix provisioning remains deferred.

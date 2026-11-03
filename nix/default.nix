@@ -29,6 +29,7 @@ let
       release ? "1",
       dependencies ? [ ],
       requiredRuntime ? null,
+      includeRequirements ? true,
     }:
     assert lib.assertMsg (
       builtins.match "[a-z0-9][a-z0-9+_.-]*" name != null
@@ -60,16 +61,18 @@ let
         mkdir -p root $out
         cp -r ${payload}/. root/
         chmod -R u+w root
-        mkdir -p root/usr/share/pkgutils-impurifier/requirements
-        cp ${
-          pkgs.writeText "${name}-requirements.json" (
-            builtins.toJSON {
-              schema = 1;
-              inherit dependencies;
-              runtimeVersion = requiredRuntime;
-            }
-          )
-        } root/usr/share/pkgutils-impurifier/requirements/${name}.json
+        ${lib.optionalString includeRequirements ''
+          mkdir -p root/usr/share/pkgutils-impurifier/requirements
+          cp ${
+            pkgs.writeText "${name}-requirements.json" (
+              builtins.toJSON {
+                schema = 1;
+                inherit dependencies;
+                runtimeVersion = requiredRuntime;
+              }
+            )
+          } root/usr/share/pkgutils-impurifier/requirements/${name}.json
+        ''}
         find root -mindepth 1 -maxdepth 1 -printf '%f\0' | sort -z | tar -C root --null -T - --sort=name --mtime=@1 --owner=0 --group=0 --numeric-owner -czf $out/${name}#${version}-${release}.pkg.tar.gz
       '';
   makePackage =
@@ -97,19 +100,18 @@ let
     };
   makeRuntimePackage =
     {
-      nixDependency ? "nix",
+      bundledNixStore ? null,
+      bundledNixNotices ? [ ],
+      nixDependency ? (if bundledNixStore == null then "nix" else null),
       pythonDependency ? "python3",
     }:
     buildPackage {
       name = "pkgutils-impurifier";
       version = core.runtimeVersion;
-      dependencies = [
-        nixDependency
-        pythonDependency
-      ];
+      dependencies = lib.optional (nixDependency != null) nixDependency ++ [ pythonDependency ];
       payload = pkgs.runCommand "pkgutils-impurifier-runtime-payload" { } ''
         mkdir -p $out
-        cp -r ${core.makeRuntimeTree { }}/. $out/
+        cp -r ${core.makeRuntimeTree { inherit bundledNixStore bundledNixNotices; }}/. $out/
         chmod -R u+w $out
         install -Dm755 ${../src/adapter.py} $out/usr/sbin/pkgutils-impurifier
         mkdir -p $out/usr/share/pkgutils-impurifier
@@ -165,6 +167,7 @@ in
     makePort
     makePrtGetConfig
     ;
+  makeNativePackage = args: buildPackage (args // { includeRequirements = false; });
   runtimePackage = makeRuntimePackage { };
   makeNetPackage = args: makePackage (args // { offline = false; });
   makeOfflinePackage = args: makePackage (args // { offline = true; });
